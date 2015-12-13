@@ -13,3 +13,9 @@ To Run
 5.	Run the Script by calling: python econ_seminars.py. You might have to log in.
 
 That's it!
+
+
+To Do
+=====
+
+Create multiple field calendars (e.g. empirical micro, macro)
