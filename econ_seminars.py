@@ -168,6 +168,9 @@ if __name__ == '__main__':
     http = credentials.authorize(httplib2.Http())
     cal = discovery.build('calendar', 'v3', http=http)
 
+    print('Deleting {} seminars'.format(len(to_remove)))
+    print('Adding {} seminars'.format(len(to_add)))
+
     if (len(to_remove) != 0) or (len(to_add) != 0):
 
         for key, row in to_remove.iterrows():
@@ -182,3 +185,5 @@ if __name__ == '__main__':
         new_df = diff[diff['_merge'] != 'right_only'].drop('_merge', axis=1)
 
         new_df.to_pickle('seminars.pkl')
+
+    print('Done!')
