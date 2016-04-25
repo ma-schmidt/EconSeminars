@@ -24,6 +24,11 @@ else:
 
 cal_id = 'murj9blvn8bq5sc33khkh568d8@group.calendar.google.com'
 tz = 'Canada/Eastern'  # Toronto timezone
+<<<<<<< HEAD
+=======
+tz0 = '-04:00'
+tz1 = '-05:00'
+>>>>>>> 9979f136082d8ba65ce1fa8b44827fcc0ea13b6d
 
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 APPLICATION_NAME = 'EconSeminars'
@@ -64,9 +69,16 @@ def delete_event(cal, row):
 
 def delete_all(cal):
     """
+<<<<<<< HEAD
     Deletes all events from the calendar.
     args:
         cal - the API handler
+=======
+    Deletes an event from the calendar.
+    args:
+        cal - the API handler
+        row - a dictionary-like object containing the key date, time, and location
+>>>>>>> 9979f136082d8ba65ce1fa8b44827fcc0ea13b6d
     """
     page_token = None
     while True:
@@ -156,9 +168,6 @@ if __name__ == '__main__':
     http = credentials.authorize(httplib2.Http())
     cal = discovery.build('calendar', 'v3', http=http)
 
-    print('Deleting {} seminars'.format(len(to_remove)))
-    print('Adding {} seminars'.format(len(to_add)))
-
     if (len(to_remove) != 0) or (len(to_add) != 0):
 
         for key, row in to_remove.iterrows():
@@ -173,5 +182,3 @@ if __name__ == '__main__':
         new_df = diff[diff['_merge'] != 'right_only'].drop('_merge', axis=1)
 
         new_df.to_pickle('seminars.pkl')
-
-    print('Done!')
