@@ -136,7 +136,7 @@ def ask_yn():
 
 if __name__ == '__main__':
     # Getting the new data by scraping the webpage
-    url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=2015&seriesId=0'
+    url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=2016&seriesId=0'
     # url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=thisWeek&seriesId=0'
     r = requests.get(url)
     soup = BeautifulSoup(r.text, 'lxml')
