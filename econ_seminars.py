@@ -1,3 +1,12 @@
+"""
+
+TODO:
+- Create my own ID system
+- Transparent
+- Status Cancelled
+- source.url (url to paper) - impossible
+"""
+
 from __future__ import print_function
 import requests
 import pandas as pd
@@ -7,24 +16,21 @@ import os
 import sys
 import time
 
+import apiclient
 from apiclient import discovery
 import oauth2client
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.service_account import ServiceAccountCredentials
 
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
-
-os.chdir('/home/pi/EconSeminars')
+path = os.path.dirname(sys.argv[0])
+if path == '':
+    path = '.'
+os.chdir(path)
 
 cal_id = 'murj9blvn8bq5sc33khkh568d8@group.calendar.google.com'
+# cal_id = 'lo63qeln25u2niq0eog0v2uvs0@group.calendar.google.com'
 tz = 'Canada/Eastern'  # Toronto timezone
-tz0 = '-04:00'
-tz1 = '-05:00'
 
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 CLIENT_SECRET_FILE = 'client_secret.json'
@@ -34,31 +40,6 @@ APPLICATION_NAME = 'EconSeminars'
 def get_credentials_sa():
     return ServiceAccountCredentials.from_json_keyfile_name(
         'gspread-0e66a6d8d261.json', scopes=SCOPES)
-
-
-def get_credentials():
-    """Gets valid user credentials from storage.
-
-    If nothing has been stored, or if the stored credentials are invalid,
-    the OAuth2 flow is completed to obtain the new credentials.
-
-    Returns:
-        Credentials, the obtained credential.
-    """
-    home_dir = os.path.expanduser('~')
-    credential_dir = os.path.join(home_dir, '.credentials')
-    if not os.path.exists(credential_dir):
-        os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir, 'econ_seminars.json')
-
-    store = oauth2client.file.Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        credentials = tools.run_flow(flow, store, flags)
-        print('Storing credentials to ' + credential_path)
-    return credentials
 
 
 def parse_seminar(seminar_html):
@@ -88,7 +69,6 @@ def delete_event(cal, row):
     """
     cal.events().delete(calendarId=cal_id, eventId=row['id']).execute()
 
-
 def delete_all(cal):
     """
     Deletes an event from the calendar.
@@ -110,6 +90,24 @@ def delete_all(cal):
         page_token = eventsResult.get('nextPageToken')
         if not page_token:
             break
+
+
+def get_all_events(cal):
+    list_events = []
+    page_token = None
+    while True:
+        eventsResult = cal.events().list(
+            calendarId=cal_id, pageToken=page_token, maxResults=50).execute()
+        events = eventsResult.get('items', [])
+
+        for event in events:
+            list_events.append(event)
+
+        page_token = eventsResult.get('nextPageToken')
+        if not page_token:
+            break
+
+    return list_events
 
 
 def add_event(cal, row):
@@ -134,6 +132,7 @@ def add_event(cal, row):
                                        .split('-')[1]).isoformat(),
             'timeZone': tz
         },
+        'transparency': 'transparent',
     }
     response = cal.events().insert(calendarId=cal_id, body=body).execute()
     time.sleep(0.5)
@@ -151,6 +150,7 @@ def ask_yn():
 
 
 if __name__ == '__main__':
+
     # Getting the new data by scraping the webpage
     url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=2016&seriesId=0'
     # url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=thisWeek&seriesId=0'
@@ -163,41 +163,45 @@ if __name__ == '__main__':
     df = pd.DataFrame(data)
     df['time'] = df['time'].str.replace(u'\u2013', '-')
 
-    # The old dataset
-    try:
-        old_seminars = pd.read_pickle('seminars.pkl')
-    except IOError:
-        print('File seminars.csv does not exist. Will add all seminars.')
-        ask_yn()
-        old_seminars = pd.DataFrame(columns=df.columns)
-
-    # We compare the two dataset. If an entry as changed, was added, or was deleted,
-    # it will be included in to_remove and/or to_add.
-    diff = pd.merge(df, old_seminars, on=list(df.columns), how='outer', indicator=True)
-    to_remove = diff[diff['_merge'] == 'right_only']
-    to_add = diff[diff['_merge'] == 'left_only']
-
-    # Add IDs to the new dataset.
+    datestr1 = df['date'] + ' ' + df['time'].str.split('-').str[0]
+    datestr2 = df['date'] + ' ' + df['time'].str.split('-').str[1]
+    df['start'] = pd.to_datetime(datestr1)
+    df['end'] = pd.to_datetime(datestr2)
+    df['starttime'] = df.start.map(lambda x: x.isoformat())
+    df['endtime'] = df.end.map(lambda x: x.isoformat())
 
     # If there are changes, do them.
     credentials = get_credentials_sa()
     http = credentials.authorize(httplib2.Http())
     cal = discovery.build('calendar', 'v3', http=http)
-    if (len(to_remove) != 0) or (len(to_add) != 0):
 
+    cal_events_pre = pd.DataFrame(get_all_events(cal))
+
+    cal_events = pd.DataFrame()
+    cal_events['title'] = cal_events_pre['description']
+    cal_events['start'] = cal_events_pre.start.map(lambda x: x['dateTime'])
+    cal_events['end'] = cal_events_pre.end.map(lambda x: x['dateTime'])
+    cal_events['presenter'] = cal_events_pre.summary.str.rsplit(' - ', 1).str[0]
+    cal_events['field'] = cal_events_pre.summary.str.rsplit(' - ', 1).str[1]
+    cal_events['location'] = cal_events_pre.location
+
+    cal_events['starttime'] = cal_events.start.str[:19]
+    cal_events['endtime'] = cal_events.end.str[:19]
+    cal_events['id'] = cal_events_pre.id
+
+    cols = ['title', 'starttime', 'endtime', 'field', 'presenter', 'location']
+
+    # We compare the two dataset. If an entry as changed, was added, or was deleted,
+    # it will be included in to_remove and/or to_add.
+    diff = pd.merge(df, cal_events, on=cols, how='outer', indicator=True)
+    to_remove = diff[diff['_merge'] == 'right_only']
+    to_add = diff[diff['_merge'] == 'left_only']
+
+    if (len(to_remove) != 0) or (len(to_add) != 0):
         print('Deleting {} seminars'.format(len(to_remove)))
         for key, row in to_remove.iterrows():
-            print(u'{} - {}'.format(row['date'], row['presenter']))
             delete_event(cal, row)
-
         print('Adding {} seminars'.format(len(to_add)))
         for key, row in to_add.iterrows():
-            print(u'{} - {}'.format(row['date'], row['presenter']))
-            response = add_event(cal, row)
-            diff.ix[key, 'id'] = response['id']
-
-        new_df = diff[diff['_merge'] != 'right_only'].drop('_merge', axis=1)
-
-        new_df.to_pickle('seminars.pkl')
-	
-	print('Done!')
+            add_event(cal, row)
+    print('Done!')
