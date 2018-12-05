@@ -16,11 +16,7 @@ import os
 import sys
 import time
 
-import apiclient
 from apiclient import discovery
-import oauth2client
-from oauth2client import client
-from oauth2client import tools
 from oauth2client.service_account import ServiceAccountCredentials
 
 path = os.path.dirname(sys.argv[0])
@@ -35,6 +31,16 @@ tz = 'Canada/Eastern'  # Toronto timezone
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'EconSeminars'
+
+
+def ask_yn():
+    response = raw_input('Is this what you want? [y]/n : ')
+    if (response == 'y') or (response == ''):
+        return
+    elif response == 'n':
+        sys.exit()
+    else:
+        ask_yn()
 
 
 def get_credentials_sa():
@@ -60,6 +66,31 @@ def parse_seminar(seminar_html):
     return out
 
 
+def get_seminars():
+    # Getting the new data by scraping the webpage
+    url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars'
+
+    payload = {'dateRange': 'all', 'seriesId': 0}
+
+    r = requests.get(url, params=payload)
+    soup = BeautifulSoup(r.text, 'lxml')
+    seminars = soup.find_all('table', 'people')
+    data = [parse_seminar(sem) for sem in seminars]
+
+    # The new dataset
+    df = pd.DataFrame(data)
+    df['time'] = df['time'].str.replace(u'\u2013', '-')
+
+    datestr1 = df['date'] + ' ' + df['time'].str.split('-').str[0]
+    datestr2 = df['date'] + ' ' + df['time'].str.split('-').str[1]
+    df['start'] = pd.to_datetime(datestr1)
+    df['end'] = pd.to_datetime(datestr2)
+    df['starttime'] = df.start.map(lambda x: x.isoformat())
+    df['endtime'] = df.end.map(lambda x: x.isoformat())
+
+    return df[df.start.dt.year >= 2016]
+
+
 def delete_event(cal, row):
     """
     Deletes an event from the calendar.
@@ -68,6 +99,7 @@ def delete_event(cal, row):
         row - a dictionary-like object containing the key date, time, and location
     """
     cal.events().delete(calendarId=cal_id, eventId=row['id']).execute()
+
 
 def delete_all(cal):
     """
@@ -139,36 +171,9 @@ def add_event(cal, row):
     return response
 
 
-def ask_yn():
-        response = raw_input('Is this what you want? [y]/n : ')
-        if (response == 'y') or (response == ''):
-            return
-        elif response == 'n':
-            sys.exit()
-        else:
-            ask_yn()
-
-
 if __name__ == '__main__':
 
-    # Getting the new data by scraping the webpage
-    url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=2016&seriesId=0'
-    # url = 'https://www.economics.utoronto.ca/index.php/index/research/seminars?dateRange=thisWeek&seriesId=0'
-    r = requests.get(url)
-    soup = BeautifulSoup(r.text, 'lxml')
-    seminars = soup.find_all('table', 'people')
-    data = [parse_seminar(sem) for sem in seminars]
-
-    # The new dataset
-    df = pd.DataFrame(data)
-    df['time'] = df['time'].str.replace(u'\u2013', '-')
-
-    datestr1 = df['date'] + ' ' + df['time'].str.split('-').str[0]
-    datestr2 = df['date'] + ' ' + df['time'].str.split('-').str[1]
-    df['start'] = pd.to_datetime(datestr1)
-    df['end'] = pd.to_datetime(datestr2)
-    df['starttime'] = df.start.map(lambda x: x.isoformat())
-    df['endtime'] = df.end.map(lambda x: x.isoformat())
+    df = get_seminars()
 
     # If there are changes, do them.
     credentials = get_credentials_sa()
